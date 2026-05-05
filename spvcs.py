@@ -19,6 +19,17 @@ class SPVCS:
         with open(self.spvcs_dir/'HEAD','w') as f:
             f.write('ref: refs/heads/master\n')
         print(f"Initialized empty SPVCS repoository in {self.spvcs_dir}")
+    
+    def hash_object(self, data, obj_type='blob'):
+        """ Store any data as an object and return its hash """
+        # Format: <type><size>\0<content>
+        header = f"{obj_type} {len(data)}\0".encode()
+        store_data = header + data
+        
+        #compute SHA-1
+        sha1 = hashlib.sha1(store_data).hexdigest()
+
+
 
 def main():
     if (len(sys.argv)<2):
