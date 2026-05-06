@@ -25,9 +25,39 @@ class SPVCS:
         # Format: <type><size>\0<content>
         header = f"{obj_type} {len(data)}\0".encode()
         store_data = header + data
-        
-        #compute SHA-1
+
         sha1 = hashlib.sha1(store_data).hexdigest()
+        # Compress and store
+        obj_path = self.spvcs_dir / 'objects' / sha1[:2] / sha1[2:]
+        obj_path.parent.mkdir(parents=True,exist_ok=True)
+        with open(obj_path, 'wb') as f:
+            f.write(zlib.compress(store_data))
+        return sha1
+
+    def hash_obj_file(self, file_path):
+        """ Read File and store as blob object """
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        return self.hash_object(data,'blob')
+    
+    def read_object(self, sha1):
+        """Read and decompress object, return (type, data)"""
+        obj_path = self.spvcs_dir / 'objects' / sha1[:2] /sha1[2:]
+        if not obj_path.exists():
+            raise FileNotFoundError(f"Object {sha1} not found")
+        with open(obj_path, 'rb') as f:
+            compressed_data = f.read()
+        decompressed = zlib.decompress(compressed_data)
+
+        null_index = decompressed.find(b'\0')
+        header = decompressed[:null_index].decode()
+        obj_type, str_size = header.split()
+        size = int(str_size)
+        data = decompressed[null_index+1:]
+        assert len(data) == size, "Size mismatch in object data"
+        return obj_type, data
+        
+    
 
 
 
@@ -40,6 +70,20 @@ def main():
 
     if cmd == 'init':
         repo.init()
+    elif cmd == 'hash-object':
+        if(len(sys.argv)<3):
+            print("Usage: spvcs hash-object <file>")
+            return
+        filepath = sys.argv[2]
+        hash_val = repo.hash_obj_file(filepath)
+        print(hash_val)
+    elif cmd == 'cat-file':
+        if(len(sys.argv)<3):
+            print("Usage: spvcs cat-file <hash>")
+            return
+        obj_type,data = repo.read_object(sys.argv[2])
+        sys.stdout.buffer.write(data)
+        
     else:
         print(f"Unknown command: {cmd}")
 
