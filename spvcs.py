@@ -56,8 +56,31 @@ class SPVCS:
         data = decompressed[null_index+1:]
         assert len(data) == size, "Size mismatch in object data"
         return obj_type, data
-        
     
+    def write_tree(self,dirpath='.'):
+        """Create Tree object from directory and return its hash"""
+        entries = []
+        full_dir = self.repo_path / dirpath
+        for item in sorted(full_dir.iterdir()):
+            if item.name == '.spvcs':
+                continue
+            if item.is_file():
+                # blob
+                with open(item,'rb') as f:
+                    data = f.read()
+                blob_hash = self.hash_object(data,'blob')
+                mode = b'100644' # Regular File
+                entry = mode + b' ' + item.name.encode() + b'\0' + bytes.fromhex(blob_hash)
+                entries.append(entry)
+            elif item.is_dir():
+                subdir_rel = Path(dirpath)/item.name
+                tree_hash = self.write_tree(str(subdir_rel))
+                mode = b'40000'  # Directory File
+                entry = mode + b' ' + item.name.encode() + b'\0' + bytes.fromhex(tree_hash)
+                entries.append(entry)
+        # Concatenate all entries
+        tree_data = b''.join(entries)
+        return self.hash_object(tree_data,'tree')
 
 
 
@@ -65,11 +88,13 @@ def main():
     if (len(sys.argv)<2):
         print("Usage: spvcs <command> [args]")
         return
+    
     cmd = sys.argv[1]
     repo = SPVCS()
 
     if cmd == 'init':
         repo.init()
+    
     elif cmd == 'hash-object':
         if(len(sys.argv)<3):
             print("Usage: spvcs hash-object <file>")
@@ -77,13 +102,16 @@ def main():
         filepath = sys.argv[2]
         hash_val = repo.hash_obj_file(filepath)
         print(hash_val)
+    
     elif cmd == 'cat-file':
         if(len(sys.argv)<3):
             print("Usage: spvcs cat-file <hash>")
             return
         obj_type,data = repo.read_object(sys.argv[2])
         sys.stdout.buffer.write(data)
-        
+    elif cmd == 'write-tree':
+        tree_hash = repo.write_tree()
+        print(tree_hash)
     else:
         print(f"Unknown command: {cmd}")
 
