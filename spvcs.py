@@ -81,6 +81,35 @@ class SPVCS:
         # Concatenate all entries
         tree_data = b''.join(entries)
         return self.hash_object(tree_data,'tree')
+    
+    def read_tree(self, tree_hash,target_dir='.'):
+        """Restore the tree object into target Directory (Overwrite)"""
+        obj_type, tree_data = self.read_object(tree_hash)
+        if obj_type != 'tree':
+            raise ValueError("Not a tree object")
+        target = self.repo_path / target_dir
+        target.mkdir(parents=True, exist_ok=True)
+
+        i = 0
+        while i < len(tree_data):
+            space_idx = tree_data.find(b' ',i)
+            mode = tree_data[i:space_idx].decode()
+            null_idx = tree_data.find(b'\0',space_idx)
+            name = tree_data[space_idx+1:null_idx].decode()
+            raw_hash = tree_data[null_idx+1:null_idx+21]
+            obj_hash = raw_hash.hex()
+
+            i = null_idx + 21
+
+            item_path = target / name
+            if mode == '100644':
+                _,content = self.read_object(obj_hash)
+                with open(item_path, 'wb') as f:
+                    f.write(content)
+            elif mode =='40000':
+                self.read_tree(obj_hash, str(Path(target_dir) / name))
+            else:
+                print(f"Unknown mode {mode} for {name}, skipping")
 
 
 
