@@ -110,6 +110,27 @@ class SPVCS:
                 self.read_tree(obj_hash, str(Path(target_dir) / name))
             else:
                 print(f"Unknown mode {mode} for {name}, skipping")
+    def commit(self, message, parent=None):
+        """Create a commit from current working tree"""
+        tree_hash = self.write_tree()
+        content = f"tree {tree_hash}\n"
+        if parent:
+            content += f"parent {parent}\n"
+        name  = os.getenv('USER','unknown')
+        email = f"{name} <{name}@example.com>"
+        timestamp = int(datetime.now().timestamp())
+        tz = "+0000"
+        content += f"author {email} {timestamp} {tz}\n"
+        content += f"committer {email} {timestamp} {tz}\n\n"
+        content += f"\n{message}\n"
+
+        commit_hash = self.hash_object(content.encode(),'commit')
+
+        branch_path = self.spvcs_dir / 'refs' / 'heads' / 'master'
+        with open(branch_path,'w') as f:
+            f.write(commit_hash)
+        print(f"Committed to master: {commit_hash}")
+        return commit_hash
 
 
 
@@ -141,6 +162,22 @@ def main():
     elif cmd == 'write-tree':
         tree_hash = repo.write_tree()
         print(tree_hash)
+    elif cmd =='read-tree':
+        if(len(sys.argv)<3):
+            print("Usage: spvcs read-tree <tree-hash>")
+            return
+        repo.read_tree(sys.argv[2])
+    elif cmd == 'commit':
+        if len(sys.argv) < 4 or sys.argv[2] != '-m':
+            print("Usage: spvcs commit -m <message>")
+            return
+        message = sys.argv[4]
+        parent = None
+        branch_path = repo.spvcs_dir / 'refs' / 'heads' / 'master'
+        if branch_path.exists():
+            with open(branch_path,'r') as f:
+                parent = f.read().strip()
+        repo.commit(message,parent)
     else:
         print(f"Unknown command: {cmd}")
 
