@@ -131,6 +131,64 @@ class SPVCS:
             f.write(commit_hash)
         print(f"Committed to master: {commit_hash}")
         return commit_hash
+    def log(self):
+        """Print commit history of current branch."""
+        branch_path = self.spvcs_dir / 'refs' / 'heads' / 'master'
+        if not branch_path.exists():
+            print("No commits yet.")
+            return
+        with open(branch_path, 'r') as f:
+            commit_hash = f.read().strip()
+        while commit_hash:
+            obj_type, content = self.read_object(commit_hash)
+            if obj_type != 'commit':
+                break
+            # Parse commit lines
+            lines = content.decode().split('\n')
+            message = ''
+            for line in lines:
+                if line.startswith(' '):  # message line starts with space
+                    message = line.strip()
+                    break
+            date_line = None
+            for line in lines:
+                if line.startswith('author'):
+                    # "author Name <email> timestamp tz"
+                    parts = line.split()
+                    timestamp = int(parts[-2])
+                    dt = datetime.fromtimestamp(timestamp)
+                    date_line = dt.strftime('%a %b %d %H:%M:%S %Y')
+                    break
+            print(f"commit {commit_hash}")
+            print(f"Date:   {date_line}")
+            print(f"\n    {message}\n")
+            # Find parent
+            parent = None
+            for line in lines:
+                if line.startswith('parent '):
+                    parent = line.split()[1]
+                    break
+            commit_hash = parent
+    def checkout(self, commit_hash):
+        """Replace working directory with the tree of given commit."""
+        # Read commit object
+        obj_type, commit_content = self.read_object(commit_hash)
+        if obj_type != 'commit':
+            raise ValueError("Not a commit object")
+        # Extract tree hash from commit
+        for line in commit_content.decode().split('\n'):
+            if line.startswith('tree '):
+                tree_hash = line.split()[1]
+                break
+        else:
+            raise ValueError("Commit has no tree")
+        # Restore tree (this will overwrite files)
+        self.read_tree(tree_hash, '.')
+        # Update HEAD and master branch (simple: we always checkout to master)
+        branch_path = self.spvcs_dir / 'refs' / 'heads' / 'master'
+        with open(branch_path, 'w') as f:
+            f.write(commit_hash)
+        print(f"Checked out commit {commit_hash[:7]}")
 
 
 
@@ -178,6 +236,13 @@ def main():
             with open(branch_path,'r') as f:
                 parent = f.read().strip()
         repo.commit(message,parent)
+    elif cmd == 'log':
+        repo.log()
+    elif cmd == 'checkout':
+        if len(sys.argv) < 3:
+            print("Usage: spvcs checkout <commit-hash>")
+            return
+        repo.checkout(sys.argv[2])
     else:
         print(f"Unknown command: {cmd}")
 
